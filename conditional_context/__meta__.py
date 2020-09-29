@@ -1,5 +1,5 @@
 name = 'conditional_context'
-version = '0.0.1'
+version = '1.0.0'
 description = 'Context manager that will skip the body on a condition.'
 url = 'https://github.com/justengel/conditional_context'
 author = 'Justin Engel'
