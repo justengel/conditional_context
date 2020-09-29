@@ -1,10 +1,9 @@
 import io
 import sys
 import inspect
-import warnings
 
 
-__all__ = ['ContextSkipError', 'ConditionalContext', 'condition']
+__all__ = ['ContextSkipError', 'ConditionalContext', 'condition', 'breakout']
 
 
 class ContextSkipError(Exception):
@@ -19,13 +18,16 @@ class ConditionalContext(object):
 
     Args:
         should_run (bool)[True]: If True the body of the context will run. If False the body of context will not run.
+        should_skip (callable/function)[None]: If given this will replace the should_skip method.
     """
     _WARNING_IGNORED = False
 
-    def __init__(self, should_run=True):
+    def __init__(self, should_run=True, should_skip=None):
         self.should_run = should_run
         self._orig_trace = None
         self.skipped = False
+        if should_skip is not None:
+            self.replace_should_skip(should_skip)
 
     def should_skip(self):
         """Return if the body of the context should be skipped."""
@@ -41,8 +43,11 @@ class ConditionalContext(object):
         return func
 
     @staticmethod
-    def trace(frame, event, arg):
+    def breakout(*args, **kwargs):
+        """Break out of the body of a ConditionalContext without showing an error."""
         raise ContextSkipError()
+
+    trace = breakout
 
     @staticmethod
     def settrace(func):
@@ -61,7 +66,8 @@ class ConditionalContext(object):
 
             # Set a stack trace that will raise an error to skip the context block
             frame = inspect.currentframe().f_back
-            frame.f_trace = self.trace
+            frame.f_trace = self.breakout
+        return self
 
     def __exit__(self, etype, value, traceback):
         # Reset the original trace method to resume debugging
@@ -71,13 +77,18 @@ class ConditionalContext(object):
         return etype == ContextSkipError or etype is None
 
 
-def condition(should_run=True):
+def condition(should_run=True, should_skip=None):
     """Context manager that can skip running the body of the context.
 
     Args:
         should_run (bool)[True]: If True the body of the context will run. If False the body of context will not run.
+        should_skip (callable/function)[None]: If given this will replace the should_skip method.
 
     Returns:
         ctx (ConditionalContext): Context manager class that can skip running the body of the context.
     """
-    return ConditionalContext(should_run)
+    return ConditionalContext(should_run, should_skip)
+
+
+# Module level function to break out of the body of a context without showing an error
+breakout = ConditionalContext.breakout
