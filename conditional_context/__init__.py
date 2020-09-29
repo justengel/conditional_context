@@ -8,7 +8,8 @@ __all__ = ['ContextSkipError', 'ConditionalContext', 'condition']
 
 
 class ContextSkipError(Exception):
-    pass
+    def __init__(self, msg='Skip context block'):
+        super().__init__(msg)
 
 
 class ConditionalContext(object):
@@ -41,7 +42,7 @@ class ConditionalContext(object):
 
     @staticmethod
     def trace(frame, event, arg):
-        raise ContextSkipError('Skip context block')
+        raise ContextSkipError()
 
     @staticmethod
     def settrace(func):
