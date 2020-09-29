@@ -30,6 +30,26 @@ def test_conditional_context_class():
     assert value, 'ConditionalContext class did not skip properly'
 
 
+def test_conditional_context_class_replace_decorator():
+    import conditional_context
+
+    ctx = conditional_context.ConditionalContext()
+
+    @ctx.replace_should_skip
+    def my_should_skip():
+        return True
+
+    print('start')
+    value = True
+    with ctx:
+        value = False
+        print('here')  # Will not print
+    print('end')
+
+    assert value, 'ConditionalContext class did not skip properly'
+
+
 if __name__ == '__main__':
     test_condition()
     test_conditional_context_class()
+    test_conditional_context_class_replace_decorator()
