@@ -95,6 +95,33 @@ class ConditionalContext(object):
             # Otherwise we return the wrapped __exit__ result
             return context_exit
 
+    def __getattribute__(self, name):
+        """Get all other attributes from wrappped context."""
+        # We can't just do self.context, will run into recursion
+        try:
+            context = super().__getattribute__("context")
+        except AttributeError:
+            context = None
+
+        if context is None or name in [
+            "_WARNING_IGNORED",
+            "__init__",
+            "__enter__",
+            "__exit__",
+            "should_skip",
+            "replace_should_skip",
+            "breakout",
+            "should_run",
+            "context",
+            "_orig_trace",
+            "skipped"
+        ]:
+            # Get actual attribute when not wrapping or when name is in list
+            return super().__getattribute__(name)
+        else:
+            # Get attribute from context when wrapping and when name is not in list
+            return type(self.context).__getattribute__(self.context, name)
+
 
 def condition(should_run=True, should_skip=None):
     """Context manager that can skip running the body of the context.
