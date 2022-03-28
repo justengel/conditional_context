@@ -11,7 +11,7 @@ class ContextSkipError(Exception):
         super().__init__(msg)
 
 
-# Module level function to break out of the body of a context without showing an error
+# Module level function to break out of the body of a context without showing an error.
 def breakout(*args, **kwargs):
     """Break out of the body of a ConditionalContext without showing an error."""
     raise ContextSkipError()
@@ -22,6 +22,22 @@ def _settrace(func):
     stderr, sys.stderr = sys.stderr, io.StringIO()
     sys.settrace(func)
     sys.stderr = stderr
+
+
+_required_attrs = [
+    # Required for ConditionalContext to work.
+    "_WARNING_IGNORED",
+    "__init__",
+    "__enter__",
+    "__exit__",
+    "should_skip",
+    "replace_should_skip",
+    "breakout",
+    "should_run",
+    "_context",
+    "_orig_trace",
+    "_skipped"
+]
 
 
 class ConditionalContext(object):
@@ -39,10 +55,10 @@ class ConditionalContext(object):
     def __init__(self, should_run=True, should_skip=None, context=None):
         self.should_run = should_run
         self.replace_should_skip(should_skip)
-        self.context = context
+        self._context = context
         self.breakout = breakout
         self._orig_trace = None
-        self.skipped = False
+        self._skipped = False
 
     def should_skip(self):
         """Return if the body of the context should be skipped."""
@@ -55,72 +71,59 @@ class ConditionalContext(object):
         return self.should_skip
 
     def __enter__(self):
+        # Get return of wrapped __enter__, if we are wrapping.
+        # We get this before skipping to avoid issues with tracebacks.
+        if self._context is None:
+            context_enter = self
+        else:
+            context_enter = self._context.__enter__()
+
         if self.should_skip():
             # Need to settrace to trigger the frame trace. Also need to reset trace after trace errors.
             self._orig_trace = sys.gettrace()
             if self._orig_trace is None:
                 _settrace(lambda *args, **keys: None)
 
-            # Set a stack trace that will raise an error to skip the context block
+            # Set a stack trace that will raise an error to skip the context block.
             frame = inspect.currentframe().f_back
             frame.f_trace = self.breakout
-            self.skipped = True
+            self._skipped = True
 
-        if self.context is None:
-            # Return ConditionalContext instance
-            return self
-        else:
-            # Use wrapped __enter__ behavior. Using self.context.__enter__() won't work
-            # because self would be a ConditionalContext instance, not type(self.context)
-            return type(self.context).__enter__(self.context)
+        return context_enter
 
     def __exit__(self, etype, value, traceback):
-        # Reset the original trace method to resume debugging
-        if self.skipped:
+        # Reset the original trace method to resume debugging.
+        if self._skipped:
             _settrace(self._orig_trace)
             self._orig_trace = None
 
-        # Get return of wrapped __exit__, if we are wrapping
-        if self.context is None:
+        # Get return of wrapped __exit__, if we are wrapping.
+        if self._context is None:
             context_exit = None
         else:
-            # Using self.context.__exit__() won't work because self would be a
-            # ConditionalContext instance, not type(self.context)
-            context_exit = type(self.context).__exit__(self.context, etype, value, traceback)
+            context_exit = self._context.__exit__(etype, value, traceback)
 
         if etype == ContextSkipError:
-            # Truthy return from __exit__ suppresses the error
+            # Truthy return from __exit__ suppresses the error.
             return True
         else:
-            # Otherwise we return the wrapped __exit__ result
+            # Otherwise we return the wrapped __exit__ result.
             return context_exit
 
     def __getattribute__(self, name):
-        """Get all other attributes from wrappped context."""
-        # We can't just do self.context, will run into recursion
+        """Passthrough all other attributes from wrappped context."""
+        # We can't just get self.context, will run into recursion.
         try:
-            context = super().__getattribute__("context")
+            context = super().__getattribute__("_context")
         except AttributeError:
             context = None
 
-        if context is None or name in [
-            "_WARNING_IGNORED",
-            "__init__",
-            "__enter__",
-            "__exit__",
-            "should_skip",
-            "replace_should_skip",
-            "breakout",
-            "should_run",
-            "context",
-            "_orig_trace",
-            "skipped"
-        ]:
-            # Get actual attribute when not wrapping or when name is in list
+        if context is None or name in _required_attrs:
+            # Get actual attribute when not wrapping or when it is required.
             return super().__getattribute__(name)
         else:
-            # Get attribute from context when wrapping and when name is not in list
-            return type(self.context).__getattribute__(self.context, name)
+            # Get attribute from context when wrapping and when it is not required.
+            return context.__getattribute__(name)
 
 
 def condition(should_run=True, should_skip=None):
